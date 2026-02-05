@@ -8,6 +8,8 @@ from fastapi import FastAPI
 from app.modules.prediction.router import router as prediction_router
 from app.modules.prompts.router import router as prompts_router
 from app.modules.prompts.services import prompt_service
+from app.modules.evaluation.router import router as evaluation_router
+from app.modules.evaluation.services import evaluation_service
 
 
 @asynccontextmanager
@@ -15,9 +17,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Handle application startup and shutdown."""
     # Startup: Initialize services
     prompt_service.initialize()
+    evaluation_service.initialize()
     yield
     # Shutdown: Cleanup resources
     prompt_service.close()
+    evaluation_service.close()
 
 
 app = FastAPI(
@@ -30,6 +34,7 @@ app = FastAPI(
 # Include routers
 app.include_router(prompts_router, prefix="/prompts", tags=["prompts"])
 app.include_router(prediction_router, prefix="/prediction", tags=["prediction"])
+app.include_router(evaluation_router, prefix="/api", tags=["evaluation"])
 
 
 @app.get("/health")
