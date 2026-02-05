@@ -4,7 +4,9 @@ Project documentation for AI assistants.
 
 ## Project Overview
 
-**Prompt Similarity & Deduplication Service** - A FastAPI microservice for semantic prompt management.
+**Blooming Health Technical Assessment** - A FastAPI modular monolith with two case studies:
+1. **Prompt Similarity & Deduplication** - Semantic prompt management
+2. **Call Outcome Prediction** - Real-time ML prediction for call outcomes
 
 ## Architecture
 
@@ -14,6 +16,11 @@ Modular monolith with clean separation:
   - `schemas.py` - Pydantic models
   - `services.py` - Business logic (PromptService singleton)
   - `router.py` - API endpoints
+- `app/modules/prediction/` - Call prediction module
+  - `schemas.py` - CallEvent, CallMetadata, PredictionInput/Response
+  - `features.py` - FeatureEngineer for temporal/interaction features
+  - `model_factory.py` - Strategy pattern with 4 ML adapters
+  - `router.py` - Train and predict endpoints
 
 ## Key Patterns
 
@@ -23,8 +30,11 @@ Template variables (`{{var}}`) are replaced with `TOKEN_VAR` before embedding to
 ### Sparse HDBSCAN
 Deduplication uses k-NN queries (top-50) to build a sparse distance matrix, avoiding O(n²) memory.
 
-### Dependency Injection
-`PromptService` is a singleton injected via FastAPI's `Depends()`.
+### Model Factory (Strategy Pattern)
+Supports 4 algorithms: LogisticRegression, RandomForest, CatBoost, LightGBM with lazy loading.
+
+### Real-time Feature Engineering
+`FeatureEngineer.compute_features()` calculates talk ratios, turn counts, and interruptions on-the-fly.
 
 ## Tech Stack
 
@@ -33,6 +43,8 @@ Deduplication uses k-NN queries (top-50) to build a sparse distance matrix, avoi
 - **sentence-transformers** (`all-MiniLM-L6-v2`, 384-dim)
 - **Milvus Lite** (local vector DB)
 - **HDBSCAN** (clustering)
+- **polars** (DataFrames)
+- **scikit-learn**, **CatBoost**, **LightGBM** (ML)
 
 ## Commands
 
@@ -55,3 +67,7 @@ uv run python -c "from app.main import app"
 | POST | `/prompts/search/semantic` | Semantic search |
 | GET | `/prompts/{id}/similar` | Find similar |
 | GET | `/prompts/analysis/duplicates` | Detect duplicates |
+| POST | `/prediction/train` | Train ML model |
+| POST | `/prediction/predict` | Real-time prediction |
+| GET | `/prediction/algorithms` | List algorithms |
+

@@ -5,6 +5,7 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI
 
+from app.modules.prediction.router import router as prediction_router
 from app.modules.prompts.router import router as prompts_router
 from app.modules.prompts.services import prompt_service
 
@@ -28,6 +29,7 @@ app = FastAPI(
 
 # Include routers
 app.include_router(prompts_router, prefix="/prompts", tags=["prompts"])
+app.include_router(prediction_router, prefix="/prediction", tags=["prediction"])
 
 
 @app.get("/health")
