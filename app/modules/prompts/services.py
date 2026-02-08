@@ -1,5 +1,6 @@
 """Business logic and database interactions for the prompts module."""
 
+import os
 import re
 import uuid
 from typing import Any
@@ -35,7 +36,7 @@ class PromptService:
     COLLECTION_NAME = "prompts"
     EMBEDDING_DIM = 384
     MODEL_NAME = "all-MiniLM-L6-v2"
-    DB_PATH = "./data/prompts.db"
+    DB_PATH = os.getenv("PROMPTS_DB_PATH", "./data/prompts.db")
     VARIABLE_PATTERN = re.compile(r"\{\{[^}]+\}\}")
     TOKEN_VAR = "TOKEN_VAR"
 

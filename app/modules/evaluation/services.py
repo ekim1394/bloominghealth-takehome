@@ -86,7 +86,8 @@ class EvaluationService:
             return
 
         # Configure MLflow
-        mlflow.set_tracking_uri("file:./mlruns")
+        tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "file:./mlruns")
+        mlflow.set_tracking_uri(tracking_uri)
         mlflow.set_experiment(self._experiment_name)
 
         # Suppress LiteLLM debug noise
