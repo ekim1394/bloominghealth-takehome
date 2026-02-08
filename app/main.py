@@ -32,9 +32,21 @@ app = FastAPI(
 )
 
 # Include routers
-app.include_router(prompts_router, prefix="/prompts", tags=["prompts"])
-app.include_router(prediction_router, prefix="/prediction", tags=["prediction"])
-app.include_router(evaluation_router, prefix="/api", tags=["evaluation"])
+app.include_router(
+    prompts_router,
+    prefix="/prompts",
+    tags=["Case Study 1: Prompt Similarity & Deduplication"],
+)
+app.include_router(
+    prediction_router,
+    prefix="/prediction",
+    tags=["Case Study 2: Call Outcome Prediction"],
+)
+app.include_router(
+    evaluation_router,
+    prefix="/api",
+    tags=["Case Study 3: LLM Response Quality Evaluation"],
+)
 
 
 @app.get("/health")

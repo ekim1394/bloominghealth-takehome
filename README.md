@@ -37,18 +37,32 @@ Then open [http://localhost:5000](http://localhost:5000) and select the **llm-re
 
 ## API Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/prompts/embeddings/generate` | POST | Generate embeddings for prompts |
-| `/prompts/search/semantic` | POST | Semantic search across prompts |
-| `/prompts/{prompt_id}/similar` | GET | Find similar to specific prompt |
-| `/prompts/analysis/duplicates` | GET | Detect duplicate clusters |
-| `/prediction/train` | POST | Train ML model for call outcomes |
-| `/prediction/predict` | POST | Real-time call outcome prediction |
-| `/prediction/algorithms` | GET | List available ML algorithms |
-| `/api/evaluate` | POST | Evaluate AI response quality |
-| `/api/compare` | POST | Compare two AI responses |
-| `/api/improve` | POST | Improve response via feedback loop |
+Interactive docs available at [http://localhost:8000/docs](http://localhost:8000/docs) — endpoints are grouped by case study.
+
+### Case Study 1: Prompt Similarity & Deduplication
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/prompts/embeddings/generate` | Generate and store embeddings for prompts |
+| POST | `/prompts/search/semantic` | Semantic search across all prompts |
+| GET | `/prompts/{prompt_id}/similar` | Find prompts similar to a specific one |
+| GET | `/prompts/analysis/duplicates` | Detect duplicate clusters via HDBSCAN |
+
+### Case Study 2: Call Outcome Prediction
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/prediction/train` | Train an ML model (`lr`, `rf`, `catboost`, `lightgbm`) |
+| POST | `/prediction/predict` | Real-time call outcome prediction from streaming events |
+| GET | `/prediction/algorithms` | List available ML algorithms |
+
+### Case Study 3: LLM Response Quality Evaluation
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/evaluate` | Score a response across 4 quality dimensions |
+| POST | `/api/compare` | Compare two responses and pick a winner |
+| POST | `/api/improve` | Improve a response via critique feedback loop |
 
 ---
 
