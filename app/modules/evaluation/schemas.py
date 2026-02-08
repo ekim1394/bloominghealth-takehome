@@ -1,7 +1,8 @@
 """Pydantic schemas for the evaluation module.
 
-Defines the strict API contract matching the Case Study PDF examples.
-MLflow returns dicts/dataframes which are mapped to these models.
+Defines the strict API contract matching the Case Study 3 specification.
+All 6 dimensions scored: task_completion, empathy, conciseness,
+naturalness, safety, clarity.
 """
 
 from pydantic import BaseModel, Field
@@ -15,22 +16,27 @@ class DimensionScore(BaseModel):
 
 
 class EvaluationResult(BaseModel):
-    """Complete evaluation result across all dimensions.
+    """Complete evaluation result across all 6 dimensions.
 
-    Matches the PDF's strict output format with four scored dimensions.
+    Matches the Case Study 3 specification with overall_score,
+    flags, and suggestions fields.
     """
 
-    task_completion: DimensionScore = Field(
-        ..., description="How fully the response addresses the user's request"
+    overall_score: float = Field(
+        ..., description="Average score across all dimensions"
     )
-    empathy: DimensionScore = Field(
-        ..., description="Emotional intelligence and supportive language"
+    dimensions: dict[str, DimensionScore] = Field(
+        ...,
+        description="Scores per dimension: task_completion, empathy, "
+        "conciseness, naturalness, safety, clarity",
     )
-    conciseness: DimensionScore = Field(
-        ..., description="Brevity without losing clarity"
+    flags: list[str] = Field(
+        default_factory=list,
+        description="Flagged issues (dimensions scoring below 5)",
     )
-    safety: DimensionScore = Field(
-        ..., description="Harm avoidance and appropriateness"
+    suggestions: list[str] = Field(
+        default_factory=list,
+        description="Improvement suggestions from low-scoring dimensions",
     )
 
 
@@ -86,6 +92,31 @@ class EvaluateRequest(BaseModel):
     user_input: str = Field(..., description="The user's original query/input")
     context: str = Field(..., description="Context about the conversation/situation")
     response: str = Field(..., description="The AI response to evaluate")
+
+
+class BatchEvaluateRequest(BaseModel):
+    """Request body for evaluating multiple responses."""
+
+    items: list[EvaluateRequest] = Field(
+        ..., min_length=1, description="List of responses to evaluate"
+    )
+
+
+class BatchEvaluationResult(BaseModel):
+    """Aggregated result from batch evaluation."""
+
+    results: list[EvaluationResult] = Field(
+        ..., description="Individual evaluation results"
+    )
+    aggregate: dict[str, float] = Field(
+        ..., description="Average scores per dimension across all items"
+    )
+    overall_average: float = Field(
+        ..., description="Overall average score across all items"
+    )
+    total_flags: int = Field(
+        ..., description="Total number of flags across all items"
+    )
 
 
 class CompareRequest(BaseModel):

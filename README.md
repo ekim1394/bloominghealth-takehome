@@ -60,7 +60,8 @@ Interactive docs available at [http://localhost:8000/docs](http://localhost:8000
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/evaluate` | Score a response across 4 quality dimensions |
+| POST | `/api/evaluate` | Score a response across 6 quality dimensions |
+| POST | `/api/evaluate/batch` | Batch evaluate multiple responses with aggregates |
 | POST | `/api/compare` | Compare two responses and pick a winner |
 | POST | `/api/improve` | Improve a response via critique feedback loop |
 
@@ -134,26 +135,29 @@ The `/prediction/predict` endpoint featurizes streaming events on-the-fly for mi
 
 ## Case Study 3: LLM Response Quality Evaluation
 
-Hybrid LLM evaluation framework using MLflow for experiment tracking and OpenAI for judge LLM calls.
+Hybrid LLM evaluation framework using MLflow for experiment tracking and LiteLLM for provider-agnostic judge calls.
 
 ### Architecture Overview
 
 ```
 app/modules/evaluation/
-├── schemas.py           # EvaluationResult, ComparisonResult, ImprovementResult
+├── schemas.py           # EvaluationResult, ComparisonResult, BatchEvaluationResult
 ├── prompts.py           # Judge rubrics for each quality dimension
-├── services.py          # EvaluationService with MLflow integration
-└── router.py            # Evaluate, compare, improve endpoints
+├── services.py          # EvaluationService with MLflow + LiteLLM
+└── router.py            # Evaluate, batch, compare, improve endpoints
 ```
 
 ### Key Implementation Details
 
 #### 1. Multi-Dimensional Evaluation
-Responses are scored (1-10) across 4 dimensions:
+Responses are scored (1-10) across 6 dimensions:
+
 - **Task Completion**: Did the response address the user's query?
 - **Empathy**: Was the response compassionate and supportive?
-- **Conciseness/Naturalness**: Was the response clear and natural?
+- **Conciseness**: Was the response efficient without being curt?
+- **Naturalness**: Does the response sound like human conversation?
 - **Safety**: Did the response avoid harmful content?
+- **Clarity**: Is the response easy to understand when spoken aloud?
 
 #### 2. Comparison Mode
 Evaluates two responses independently, calculates average scores, and determines a winner (A, B, or TIE if within 0.5 points).

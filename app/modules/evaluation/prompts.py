@@ -256,6 +256,51 @@ Respond in this exact JSON format:
 """
 
 # =============================================================================
+# CLARITY RUBRIC
+# =============================================================================
+# Evaluates how easy the response is to understand when spoken aloud.
+
+CLARITY_RUBRIC = """
+You are evaluating an AI assistant's response for CLARITY.
+
+DEFINITION:
+Clarity measures how easy the response is to understand when spoken aloud.
+A clear response uses simple words, has a logical structure, avoids jargon,
+and can be followed without needing to re-read.
+
+SCORING SCALE (1-10):
+- 9-10: Crystal clear. Simple words, logical flow, easy to follow on first listen.
+        Perfect for voice delivery.
+- 7-8:  Very clear. Mostly easy to understand but could use simpler phrasing
+        in one or two spots.
+- 5-6:  Somewhat clear. Contains some complex sentences or jargon that might
+        confuse a listener.
+- 3-4:  Unclear. Multiple complex clauses, technical jargon, or poor structure
+        that makes it hard to follow when spoken.
+- 1-2:  Very unclear. Convoluted sentences, heavy jargon, or disorganized
+        structure that would be confusing even when read.
+
+KEY QUESTIONS TO ASK:
+1. Could a listener follow this on the first pass without needing to replay it?
+2. Are sentences short enough for voice delivery (under ~20 words)?
+3. Is the vocabulary accessible to a general audience?
+4. Is the information presented in a logical, sequential order?
+5. Are there any ambiguous pronouns or references?
+
+EVALUATION TASK:
+Given the user input, context, and AI response below, provide:
+1. A score from 1-10
+2. Specific reasoning explaining why you gave this score
+
+User Input: {user_input}
+Context: {context}
+AI Response: {response}
+
+Respond in this exact JSON format:
+{{"score": <int>, "reasoning": "<explanation>"}}
+"""
+
+# =============================================================================
 # IMPROVEMENT PROMPT
 # =============================================================================
 # Used by the improve_response function to generate an improved version.

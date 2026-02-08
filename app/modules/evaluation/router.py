@@ -3,6 +3,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.modules.evaluation.schemas import (
+    BatchEvaluateRequest,
+    BatchEvaluationResult,
     CompareRequest,
     ComparisonResult,
     EvaluateRequest,
@@ -27,8 +29,8 @@ def get_evaluation_service() -> EvaluationService:
     "/evaluate",
     response_model=EvaluationResult,
     summary="Evaluate a response",
-    description="Evaluate an AI response across multiple quality dimensions: "
-    "task completion, empathy, conciseness, and safety.",
+    description="Evaluate an AI response across 6 quality dimensions: "
+    "task completion, empathy, conciseness, naturalness, safety, and clarity.",
 )
 async def evaluate_response(
     request: EvaluateRequest,
@@ -36,7 +38,7 @@ async def evaluate_response(
 ) -> EvaluationResult:
     """Evaluate a single AI response.
 
-    Returns scores and reasoning for each quality dimension.
+    Returns overall_score, per-dimension scores, flags, and suggestions.
     Results are logged to MLflow for tracking.
     """
     try:
@@ -55,11 +57,38 @@ async def evaluate_response(
 
 
 @router.post(
+    "/evaluate/batch",
+    response_model=BatchEvaluationResult,
+    summary="Batch evaluate responses",
+    description="Evaluate multiple AI responses and return individual scores "
+    "plus aggregate statistics across all items.",
+)
+async def evaluate_batch(
+    request: BatchEvaluateRequest,
+    service: EvaluationService = Depends(get_evaluation_service),
+) -> BatchEvaluationResult:
+    """Evaluate multiple AI responses in batch.
+
+    Returns individual evaluations and aggregate per-dimension averages.
+    """
+    try:
+        items = [item.model_dump() for item in request.items]
+        return await service.evaluate_batch(items)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Batch evaluation failed: {str(e)}",
+        )
+
+
+@router.post(
     "/compare",
     response_model=ComparisonResult,
     summary="Compare two responses",
     description="Evaluate two AI responses and determine which one is better "
-    "based on average scores across all dimensions.",
+    "based on average scores across all 6 dimensions.",
 )
 async def compare_responses(
     request: CompareRequest,

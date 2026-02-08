@@ -3,8 +3,12 @@
 Hybrid architecture leveraging MLflow as the primary runner/logger,
 integrated with DeepEval metrics for safety/hallucination detection.
 Uses LiteLLM for provider-agnostic LLM calls.
+
+Evaluates responses across 6 dimensions per Case Study 3 spec:
+task_completion, empathy, conciseness, naturalness, safety, clarity.
 """
 
+import asyncio
 import json
 import os
 from typing import Any
@@ -13,25 +17,41 @@ import litellm
 import mlflow
 
 from app.modules.evaluation.prompts import (
+    CLARITY_RUBRIC,
     CONCISENESS_RUBRIC,
     EMPATHY_RUBRIC,
     IMPROVEMENT_PROMPT,
+    NATURALNESS_RUBRIC,
     SAFETY_RUBRIC,
     TASK_COMPLETION_RUBRIC,
 )
 from app.modules.evaluation.schemas import (
+    BatchEvaluationResult,
     ComparisonResult,
     DimensionScore,
     EvaluationResult,
     ImprovementResult,
 )
 
+# Map dimension names to their rubric prompts
+DIMENSION_RUBRICS: dict[str, str] = {
+    "task_completion": TASK_COMPLETION_RUBRIC,
+    "empathy": EMPATHY_RUBRIC,
+    "conciseness": CONCISENESS_RUBRIC,
+    "naturalness": NATURALNESS_RUBRIC,
+    "safety": SAFETY_RUBRIC,
+    "clarity": CLARITY_RUBRIC,
+}
+
+# Dimensions that trigger flags when scoring below this threshold
+FLAG_THRESHOLD = 5
+
 
 class EvaluationService:
     """Singleton service for LLM response quality evaluation.
 
     Uses MLflow for experiment tracking and logging, with custom judge
-    prompts for multi-dimensional evaluation.
+    prompts for multi-dimensional evaluation across 6 dimensions.
     """
 
     _instance: "EvaluationService | None" = None
@@ -78,6 +98,10 @@ class EvaluationService:
         """Cleanup resources."""
         self._initialized = False
 
+    # =========================================================================
+    # Core LLM Judge
+    # =========================================================================
+
     async def _call_judge(
         self,
         rubric: str,
@@ -99,7 +123,6 @@ class EvaluationService:
         Returns:
             DimensionScore with score and reasoning
         """
-        # Format the rubric with the actual content
         formatted_prompt = rubric.format(
             user_input=user_input,
             context=context,
@@ -128,13 +151,19 @@ class EvaluationService:
             reasoning=result.get("reasoning", "No reasoning provided"),
         )
 
+    # =========================================================================
+    # Evaluate
+    # =========================================================================
+
     async def evaluate_response(
         self,
         user_input: str,
         context: str,
         response: str,
     ) -> EvaluationResult:
-        """Evaluate a response across all quality dimensions.
+        """Evaluate a response across all 6 quality dimensions.
+
+        Runs all dimension judges concurrently for speed.
 
         Args:
             user_input: The user's original query
@@ -142,44 +171,56 @@ class EvaluationService:
             response: The AI response to evaluate
 
         Returns:
-            EvaluationResult with scores for all dimensions
+            EvaluationResult with overall_score, dimensions, flags, suggestions
         """
-        # Run all judges
-        task_completion = await self._call_judge(
-            TASK_COMPLETION_RUBRIC, user_input, context, response
-        )
-        empathy = await self._call_judge(EMPATHY_RUBRIC, user_input, context, response)
-        conciseness = await self._call_judge(
-            CONCISENESS_RUBRIC, user_input, context, response
-        )
-        safety = await self._call_judge(SAFETY_RUBRIC, user_input, context, response)
+        # Run all 6 judges concurrently
+        tasks = {
+            name: self._call_judge(rubric, user_input, context, response)
+            for name, rubric in DIMENSION_RUBRICS.items()
+        }
+        scores: dict[str, DimensionScore] = {}
+        results = await asyncio.gather(*tasks.values())
+        for name, score in zip(tasks.keys(), results):
+            scores[name] = score
+
+        # Calculate overall score
+        overall = sum(s.score for s in scores.values()) / len(scores)
+
+        # Generate flags for low-scoring dimensions
+        flags = [
+            f"{name} scored {s.score}/10 — needs attention"
+            for name, s in scores.items()
+            if s.score < FLAG_THRESHOLD
+        ]
+
+        # Generate suggestions from reasoning of low-scoring dimensions
+        suggestions = [
+            s.reasoning
+            for s in scores.values()
+            if s.score < 7
+        ]
 
         result = EvaluationResult(
-            task_completion=task_completion,
-            empathy=empathy,
-            conciseness=conciseness,
-            safety=safety,
+            overall_score=round(overall, 2),
+            dimensions=scores,
+            flags=flags,
+            suggestions=suggestions,
         )
 
         # Log to MLflow
-        avg_score = self._calculate_average_score(result)
         with mlflow.start_run(run_name=f"evaluate: {user_input[:50]}"):
             mlflow.log_params(
                 {
-                    "user_input": user_input[:100],  # Truncate for logging
+                    "user_input": user_input[:100],
                     "context": context[:100],
+                    "model": self._model,
                 }
             )
-            mlflow.log_metrics(
-                {
-                    "task_completion_score": task_completion.score,
-                    "empathy_score": empathy.score,
-                    "conciseness_score": conciseness.score,
-                    "safety_score": safety.score,
-                    "average_score": avg_score,
-                }
-            )
-            # Log the full response and evaluation as JSON artifact
+            metrics = {
+                f"{name}_score": s.score for name, s in scores.items()
+            }
+            metrics["overall_score"] = overall
+            mlflow.log_metrics(metrics)
             mlflow.log_dict(
                 {
                     "response": response,
@@ -190,15 +231,54 @@ class EvaluationService:
 
         return result
 
-    def _calculate_average_score(self, result: EvaluationResult) -> float:
-        """Calculate average score across all dimensions."""
-        scores = [
-            result.task_completion.score,
-            result.empathy.score,
-            result.conciseness.score,
-            result.safety.score,
-        ]
-        return sum(scores) / len(scores)
+    # =========================================================================
+    # Batch Evaluate
+    # =========================================================================
+
+    async def evaluate_batch(
+        self,
+        items: list[dict[str, str]],
+    ) -> BatchEvaluationResult:
+        """Evaluate multiple responses and return aggregate statistics.
+
+        Args:
+            items: List of dicts with user_input, context, response keys
+
+        Returns:
+            BatchEvaluationResult with individual results and aggregates
+        """
+        results = await asyncio.gather(
+            *[
+                self.evaluate_response(
+                    item["user_input"], item["context"], item["response"]
+                )
+                for item in items
+            ]
+        )
+        results = list(results)
+
+        # Aggregate per-dimension averages
+        dimension_names = list(DIMENSION_RUBRICS.keys())
+        aggregate: dict[str, float] = {}
+        for dim in dimension_names:
+            dim_scores = [r.dimensions[dim].score for r in results]
+            aggregate[dim] = round(sum(dim_scores) / len(dim_scores), 2)
+
+        overall_avg = round(
+            sum(r.overall_score for r in results) / len(results), 2
+        )
+        total_flags = sum(len(r.flags) for r in results)
+
+        return BatchEvaluationResult(
+            results=results,
+            aggregate=aggregate,
+            overall_average=overall_avg,
+            total_flags=total_flags,
+        )
+
+    # =========================================================================
+    # Compare
+    # =========================================================================
 
     async def compare_responses(
         self,
@@ -218,12 +298,13 @@ class EvaluationService:
         Returns:
             ComparisonResult with winner and detailed evaluations
         """
-        # Evaluate both responses
-        eval_a = await self.evaluate_response(user_input, context, response_a)
-        eval_b = await self.evaluate_response(user_input, context, response_b)
+        eval_a, eval_b = await asyncio.gather(
+            self.evaluate_response(user_input, context, response_a),
+            self.evaluate_response(user_input, context, response_b),
+        )
 
-        score_a = self._calculate_average_score(eval_a)
-        score_b = self._calculate_average_score(eval_b)
+        score_a = eval_a.overall_score
+        score_b = eval_b.overall_score
 
         # Determine winner
         if abs(score_a - score_b) < 0.5:
@@ -256,19 +337,19 @@ class EvaluationService:
     ) -> str:
         """Generate reasoning for why one response won."""
         advantages = []
-
-        if winner_eval.task_completion.score > loser_eval.task_completion.score:
-            advantages.append("better task completion")
-        if winner_eval.empathy.score > loser_eval.empathy.score:
-            advantages.append("more empathetic")
-        if winner_eval.conciseness.score > loser_eval.conciseness.score:
-            advantages.append("more concise")
-        if winner_eval.safety.score > loser_eval.safety.score:
-            advantages.append("safer")
+        for dim in DIMENSION_RUBRICS:
+            w_score = winner_eval.dimensions[dim].score
+            l_score = loser_eval.dimensions[dim].score
+            if w_score > l_score:
+                advantages.append(f"better {dim.replace('_', ' ')}")
 
         if advantages:
             return f"Response {winner_label} wins by being {', '.join(advantages)}."
         return f"Response {winner_label} has a higher overall score."
+
+    # =========================================================================
+    # Improve
+    # =========================================================================
 
     async def improve_response(
         self,
@@ -298,7 +379,7 @@ class EvaluationService:
         """
         # Step 1: Evaluate original response
         original_eval = await self.evaluate_response(user_input, context, response)
-        original_score = self._calculate_average_score(original_eval)
+        original_score = original_eval.overall_score
 
         # Step 2: Check if improvement is needed
         if original_score >= threshold:
@@ -327,12 +408,12 @@ class EvaluationService:
         improved_eval = await self.evaluate_response(
             user_input, context, improved_response
         )
-        improved_score = self._calculate_average_score(improved_eval)
+        improved_score = improved_eval.overall_score
 
         # Step 6: Log before/after to MLflow
         changes_made = self._identify_changes(original_eval, improved_eval)
         with mlflow.start_run(run_name=f"improve: {user_input[:50]}"):
-            mlflow.log_params({"operation": "improvement"})
+            mlflow.log_params({"operation": "improvement", "model": self._model})
             mlflow.log_metrics(
                 {
                     "original_score": original_score,
@@ -363,28 +444,12 @@ class EvaluationService:
     def _build_critique(self, evaluation: EvaluationResult) -> str:
         """Build a critique string from evaluation results."""
         critiques = []
-
-        if evaluation.task_completion.score < 8:
-            critiques.append(
-                f"Task Completion ({evaluation.task_completion.score}/10): "
-                f"{evaluation.task_completion.reasoning}"
-            )
-        if evaluation.empathy.score < 8:
-            critiques.append(
-                f"Empathy ({evaluation.empathy.score}/10): "
-                f"{evaluation.empathy.reasoning}"
-            )
-        if evaluation.conciseness.score < 8:
-            critiques.append(
-                f"Conciseness ({evaluation.conciseness.score}/10): "
-                f"{evaluation.conciseness.reasoning}"
-            )
-        if evaluation.safety.score < 8:
-            critiques.append(
-                f"Safety ({evaluation.safety.score}/10): "
-                f"{evaluation.safety.reasoning}"
-            )
-
+        for name, score in evaluation.dimensions.items():
+            if score.score < 8:
+                label = name.replace("_", " ").title()
+                critiques.append(
+                    f"{label} ({score.score}/10): {score.reasoning}"
+                )
         return "\n\n".join(critiques) if critiques else "Minor issues across dimensions."
 
     async def _generate_improved_response(self, prompt: str) -> str:
@@ -411,23 +476,13 @@ class EvaluationService:
     ) -> list[str]:
         """Identify what changed between evaluations."""
         changes = []
-
-        delta_tc = improved.task_completion.score - original.task_completion.score
-        if delta_tc > 0:
-            changes.append(f"Task completion improved by {delta_tc} points")
-
-        delta_emp = improved.empathy.score - original.empathy.score
-        if delta_emp > 0:
-            changes.append(f"Empathy improved by {delta_emp} points")
-
-        delta_con = improved.conciseness.score - original.conciseness.score
-        if delta_con > 0:
-            changes.append(f"Conciseness improved by {delta_con} points")
-
-        delta_saf = improved.safety.score - original.safety.score
-        if delta_saf > 0:
-            changes.append(f"Safety improved by {delta_saf} points")
-
+        for dim in DIMENSION_RUBRICS:
+            delta = (
+                improved.dimensions[dim].score - original.dimensions[dim].score
+            )
+            if delta > 0:
+                label = dim.replace("_", " ").title()
+                changes.append(f"{label} improved by {delta} points")
         return changes if changes else ["Minor improvements across dimensions"]
 
 
