@@ -2,6 +2,11 @@
 # Stage 1: Install dependencies
 FROM python:3.11-slim AS builder
 
+# Install build tools for native extensions (hdbscan requires gcc)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install uv for fast dependency resolution
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
