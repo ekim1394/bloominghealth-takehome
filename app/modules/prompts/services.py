@@ -53,6 +53,11 @@ class PromptService:
         self._model: SentenceTransformer | None = None
         self._client: MilvusClient | None = None
 
+    @property
+    def is_initialized(self) -> bool:
+        """Whether the service has been initialized."""
+        return self._initialized
+
     def initialize(self) -> None:
         """
         Initialize the service: load model and connect to Milvus.

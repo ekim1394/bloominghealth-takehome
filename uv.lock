@@ -2185,7 +2185,6 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "catboost" },
-    { name = "faker" },
     { name = "fastapi" },
     { name = "hdbscan" },
     { name = "joblib" },
@@ -2205,6 +2204,7 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "faker" },
     { name = "httpx" },
     { name = "mypy" },
     { name = "pytest" },
@@ -2213,7 +2213,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "catboost", specifier = ">=1.2.0" },
-    { name = "faker", specifier = ">=22.0.0" },
+    { name = "faker", marker = "extra == 'dev'", specifier = ">=22.0.0" },
     { name = "fastapi", specifier = ">=0.109.0" },
     { name = "hdbscan", specifier = ">=0.8.33" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.26.0" },

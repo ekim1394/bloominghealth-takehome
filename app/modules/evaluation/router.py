@@ -18,7 +18,7 @@ router = APIRouter()
 
 def get_evaluation_service() -> EvaluationService:
     """Dependency injection for EvaluationService."""
-    if not evaluation_service._initialized:
+    if not evaluation_service.is_initialized:
         evaluation_service.initialize()
     return evaluation_service
 
@@ -45,6 +45,8 @@ async def evaluate_response(
             context=request.context,
             response=request.response,
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -75,6 +77,8 @@ async def compare_responses(
             response_a=request.response_a,
             response_b=request.response_b,
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -107,6 +111,8 @@ async def improve_response(
             response=request.response,
             threshold=request.threshold,
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=500,

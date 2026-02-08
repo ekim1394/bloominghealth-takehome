@@ -9,13 +9,12 @@ import os
 from typing import Any
 
 import mlflow
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 from app.modules.evaluation.prompts import (
     CONCISENESS_RUBRIC,
     EMPATHY_RUBRIC,
     IMPROVEMENT_PROMPT,
-    NATURALNESS_RUBRIC,
     SAFETY_RUBRIC,
     TASK_COMPLETION_RUBRIC,
 )
@@ -35,19 +34,25 @@ class EvaluationService:
     """
 
     _instance: "EvaluationService | None" = None
-    _initialized: bool = False
 
     def __new__(cls) -> "EvaluationService":
         """Ensure singleton pattern."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
         return cls._instance
 
     def __init__(self) -> None:
         """Initialize instance attributes (actual init happens in initialize())."""
-        if not hasattr(self, "_openai_client"):
-            self._openai_client: OpenAI | None = None
-            self._experiment_name = "llm-response-evaluation"
+        if not hasattr(self, "_initialized"):
+            self._initialized = False
+        self._openai_client: AsyncOpenAI | None = None
+        self._experiment_name = "llm-response-evaluation"
+
+    @property
+    def is_initialized(self) -> bool:
+        """Whether the service has been initialized."""
+        return self._initialized
 
     def initialize(self) -> None:
         """Initialize the service: set up MLflow and OpenAI client.
@@ -64,7 +69,7 @@ class EvaluationService:
         # Initialize OpenAI client
         api_key = os.getenv("OPENAI_API_KEY")
         if api_key:
-            self._openai_client = OpenAI(api_key=api_key)
+            self._openai_client = AsyncOpenAI(api_key=api_key)
 
         self._initialized = True
 
@@ -73,7 +78,7 @@ class EvaluationService:
         self._openai_client = None
         self._initialized = False
 
-    def _call_judge(
+    async def _call_judge(
         self,
         rubric: str,
         user_input: str,
@@ -105,7 +110,7 @@ class EvaluationService:
             response=response,
         )
 
-        completion = self._openai_client.chat.completions.create(
+        completion = await self._openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
@@ -144,14 +149,14 @@ class EvaluationService:
             EvaluationResult with scores for all dimensions
         """
         # Run all judges
-        task_completion = self._call_judge(
+        task_completion = await self._call_judge(
             TASK_COMPLETION_RUBRIC, user_input, context, response
         )
-        empathy = self._call_judge(EMPATHY_RUBRIC, user_input, context, response)
-        conciseness = self._call_judge(
+        empathy = await self._call_judge(EMPATHY_RUBRIC, user_input, context, response)
+        conciseness = await self._call_judge(
             CONCISENESS_RUBRIC, user_input, context, response
         )
-        safety = self._call_judge(SAFETY_RUBRIC, user_input, context, response)
+        safety = await self._call_judge(SAFETY_RUBRIC, user_input, context, response)
 
         result = EvaluationResult(
             task_completion=task_completion,
@@ -320,7 +325,7 @@ class EvaluationService:
         )
 
         # Step 4: Generate improved response
-        improved_response = self._generate_improved_response(improvement_prompt)
+        improved_response = await self._generate_improved_response(improvement_prompt)
 
         # Step 5: Re-evaluate improved response
         improved_eval = await self.evaluate_response(
@@ -386,12 +391,12 @@ class EvaluationService:
 
         return "\n\n".join(critiques) if critiques else "Minor issues across dimensions."
 
-    def _generate_improved_response(self, prompt: str) -> str:
+    async def _generate_improved_response(self, prompt: str) -> str:
         """Generate an improved response using OpenAI."""
         if not self._openai_client:
             return "[OpenAI API key not configured - cannot generate improvement]"
 
-        completion = self._openai_client.chat.completions.create(
+        completion = await self._openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
@@ -404,7 +409,7 @@ class EvaluationService:
             temperature=0.7,
         )
 
-        return completion.choices[0].message.content or response
+        return completion.choices[0].message.content or "[No content returned from LLM]"
 
     def _identify_changes(
         self,

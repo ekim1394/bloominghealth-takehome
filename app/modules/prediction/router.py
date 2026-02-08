@@ -1,5 +1,6 @@
 """FastAPI router for the prediction module."""
 
+import datetime
 import json
 from pathlib import Path
 from typing import Any
@@ -89,7 +90,6 @@ def _parse_training_data(file_path: str) -> tuple[list[dict[str, Any]], list[str
 
             # Convert numeric offsets (from generator) to datetimes
             if isinstance(raw_ts, (int, float)):
-                import datetime
                 dt_ts = datetime.datetime.fromtimestamp(raw_ts, tz=datetime.timezone.utc)
             else:
                 dt_ts = raw_ts

@@ -40,6 +40,11 @@ class OutcomePredictor(ABC):
         """Create the underlying ML model."""
         ...
 
+    @abstractmethod
+    def _get_importances(self) -> np.ndarray:
+        """Return per-feature importance/coefficient array."""
+        ...
+
     def train(self, X: pl.DataFrame, y: pl.Series) -> None:
         """
         Train the model on feature data.
@@ -87,7 +92,17 @@ class OutcomePredictor(ABC):
 
         return labels, failure_probs
 
-    @abstractmethod
+    def _resolve_value(self, fname: str, raw_value: Any) -> float:
+        """Resolve a feature value to a float, encoding categoricals."""
+        if isinstance(raw_value, str):
+            le = self._label_encoders.get(fname)
+            return float(le.transform([raw_value])[0]) if le and raw_value in le.classes_ else 0.0
+        return float(raw_value)
+
+    def _compute_impact(self, importance: float, value: float) -> float:
+        """Compute impact score from importance and value. Override for custom logic."""
+        return float(importance)
+
     def get_top_factors(
         self,
         X_row: dict[str, Any],
@@ -103,7 +118,21 @@ class OutcomePredictor(ABC):
         Returns:
             List of FeatureImpact with feature name, impact, and value.
         """
-        ...
+        if self.model is None:
+            return []
+
+        importances = self._get_importances()
+        impacts = []
+
+        for i, fname in enumerate(self.feature_names):
+            value = self._resolve_value(fname, X_row.get(fname, 0.0))
+            impact = self._compute_impact(float(importances[i]), value)
+            impacts.append(
+                FeatureImpact(feature=fname, impact=impact, value=value)
+            )
+
+        impacts.sort(key=lambda x: abs(x.impact), reverse=True)
+        return impacts[:n]
 
     def _encode_features(self, X: pl.DataFrame, fit: bool = False) -> np.ndarray:
         """Encode categorical features to numeric."""
@@ -162,32 +191,12 @@ class LogisticRegressionAdapter(OutcomePredictor):
             class_weight="balanced",
         )
 
-    def get_top_factors(
-        self,
-        X_row: dict[str, Any],
-        n: int = 3,
-    ) -> list[FeatureImpact]:
-        """Get top factors using coefficient weights."""
-        if self.model is None:
-            return []
+    def _get_importances(self) -> np.ndarray:
+        return self.model.coef_[0]
 
-        coefs = self.model.coef_[0]
-        impacts = []
-
-        for i, fname in enumerate(self.feature_names):
-            value = X_row.get(fname, 0.0)
-            if isinstance(value, str):
-                # Encode categorical value
-                le = self._label_encoders.get(fname)
-                value = le.transform([value])[0] if le and value in le.classes_ else 0.0
-            impact = float(coefs[i]) * float(value)
-            impacts.append(
-                FeatureImpact(feature=fname, impact=impact, value=float(value))
-            )
-
-        # Sort by absolute impact and return top n
-        impacts.sort(key=lambda x: abs(x.impact), reverse=True)
-        return impacts[:n]
+    def _compute_impact(self, importance: float, value: float) -> float:
+        """For logistic regression, impact = coefficient × feature value."""
+        return importance * value
 
 
 class RandomForestAdapter(OutcomePredictor):
@@ -204,33 +213,8 @@ class RandomForestAdapter(OutcomePredictor):
             n_jobs=-1,
         )
 
-    def get_top_factors(
-        self,
-        X_row: dict[str, Any],
-        n: int = 3,
-    ) -> list[FeatureImpact]:
-        """Get top factors using feature importances."""
-        if self.model is None:
-            return []
-
-        importances = self.model.feature_importances_
-        impacts = []
-
-        for i, fname in enumerate(self.feature_names):
-            value = X_row.get(fname, 0.0)
-            if isinstance(value, str):
-                le = self._label_encoders.get(fname)
-                value = le.transform([value])[0] if le and value in le.classes_ else 0.0
-            impacts.append(
-                FeatureImpact(
-                    feature=fname,
-                    impact=float(importances[i]),
-                    value=float(value),
-                )
-            )
-
-        impacts.sort(key=lambda x: abs(x.impact), reverse=True)
-        return impacts[:n]
+    def _get_importances(self) -> np.ndarray:
+        return self.model.feature_importances_
 
 
 class CatBoostAdapter(OutcomePredictor):
@@ -248,33 +232,8 @@ class CatBoostAdapter(OutcomePredictor):
             auto_class_weights="Balanced",
         )
 
-    def get_top_factors(
-        self,
-        X_row: dict[str, Any],
-        n: int = 3,
-    ) -> list[FeatureImpact]:
-        """Get top factors using feature importances."""
-        if self.model is None:
-            return []
-
-        importances = self.model.get_feature_importance()
-        impacts = []
-
-        for i, fname in enumerate(self.feature_names):
-            value = X_row.get(fname, 0.0)
-            if isinstance(value, str):
-                le = self._label_encoders.get(fname)
-                value = le.transform([value])[0] if le and value in le.classes_ else 0.0
-            impacts.append(
-                FeatureImpact(
-                    feature=fname,
-                    impact=float(importances[i]),
-                    value=float(value),
-                )
-            )
-
-        impacts.sort(key=lambda x: abs(x.impact), reverse=True)
-        return impacts[:n]
+    def _get_importances(self) -> np.ndarray:
+        return self.model.get_feature_importance()
 
 
 class LightGBMAdapter(OutcomePredictor):
@@ -292,33 +251,8 @@ class LightGBMAdapter(OutcomePredictor):
             verbose=-1,
         )
 
-    def get_top_factors(
-        self,
-        X_row: dict[str, Any],
-        n: int = 3,
-    ) -> list[FeatureImpact]:
-        """Get top factors using feature importances."""
-        if self.model is None:
-            return []
-
-        importances = self.model.feature_importances_
-        impacts = []
-
-        for i, fname in enumerate(self.feature_names):
-            value = X_row.get(fname, 0.0)
-            if isinstance(value, str):
-                le = self._label_encoders.get(fname)
-                value = le.transform([value])[0] if le and value in le.classes_ else 0.0
-            impacts.append(
-                FeatureImpact(
-                    feature=fname,
-                    impact=float(importances[i]),
-                    value=float(value),
-                )
-            )
-
-        impacts.sort(key=lambda x: abs(x.impact), reverse=True)
-        return impacts[:n]
+    def _get_importances(self) -> np.ndarray:
+        return self.model.feature_importances_
 
 
 class ModelFactory:

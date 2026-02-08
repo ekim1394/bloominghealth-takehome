@@ -25,8 +25,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 app = FastAPI(
-    title="Prompt Similarity & Deduplication Service",
-    description="A service for managing prompt embeddings, semantic search, and duplicate detection",
+    title="Blooming Health Technical Assessment",
+    description="Modular monolith with Prompt Similarity, Call Prediction, and LLM Evaluation",
     version="0.1.0",
     lifespan=lifespan,
 )

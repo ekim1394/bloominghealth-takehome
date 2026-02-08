@@ -18,7 +18,7 @@ router = APIRouter()
 
 def get_prompt_service() -> PromptService:
     """Dependency injection for PromptService."""
-    if not prompt_service._initialized:
+    if not prompt_service.is_initialized:
         prompt_service.initialize()
     return prompt_service
 
@@ -53,6 +53,8 @@ async def generate_embeddings(
             ids=ids,
             count=len(ids),
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -87,6 +89,8 @@ async def semantic_search(
             results=results,
             query=request.query,
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -116,9 +120,6 @@ async def get_similar_prompts(
             prompt_id=prompt_id,
             top_k=top_k,
         )
-        
-        if not results and not service._client:
-            raise HTTPException(status_code=404, detail="Prompt not found")
         
         return results
     except HTTPException:

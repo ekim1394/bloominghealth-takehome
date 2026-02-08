@@ -11,7 +11,7 @@ services:
       # Persist MLflow tracking data to local host
       - ./mlruns:/app/mlruns
       # Persist Milvus vector DB data to local host
-      - ./data/milvus_data:/app/milvus_data
+      - ./data:/app/data
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
@@ -19,7 +19,3 @@ services:
       retries: 3
       start_period: 30s
     restart: unless-stopped
-
-volumes:
-  mlruns:
-  milvus_data:
