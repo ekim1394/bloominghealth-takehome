@@ -2,14 +2,15 @@
 
 Hybrid architecture leveraging MLflow as the primary runner/logger,
 integrated with DeepEval metrics for safety/hallucination detection.
+Uses LiteLLM for provider-agnostic LLM calls.
 """
 
 import json
 import os
 from typing import Any
 
+import litellm
 import mlflow
-from openai import AsyncOpenAI
 
 from app.modules.evaluation.prompts import (
     CONCISENESS_RUBRIC,
@@ -46,7 +47,7 @@ class EvaluationService:
         """Initialize instance attributes (actual init happens in initialize())."""
         if not hasattr(self, "_initialized"):
             self._initialized = False
-        self._openai_client: AsyncOpenAI | None = None
+        self._model: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
         self._experiment_name = "llm-response-evaluation"
 
     @property
@@ -55,9 +56,11 @@ class EvaluationService:
         return self._initialized
 
     def initialize(self) -> None:
-        """Initialize the service: set up MLflow and OpenAI client.
+        """Initialize the service: set up MLflow.
 
         Should be called during application startup.
+        LiteLLM reads API keys from standard env vars
+        (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc).
         """
         if self._initialized:
             return
@@ -66,16 +69,13 @@ class EvaluationService:
         mlflow.set_tracking_uri("file:./mlruns")
         mlflow.set_experiment(self._experiment_name)
 
-        # Initialize OpenAI client
-        api_key = os.getenv("OPENAI_API_KEY")
-        if api_key:
-            self._openai_client = AsyncOpenAI(api_key=api_key)
+        # Suppress LiteLLM debug noise
+        litellm.suppress_debug_info = True
 
         self._initialized = True
 
     def close(self) -> None:
         """Cleanup resources."""
-        self._openai_client = None
         self._initialized = False
 
     async def _call_judge(
@@ -87,6 +87,9 @@ class EvaluationService:
     ) -> DimensionScore:
         """Call an LLM judge with the given rubric.
 
+        Uses LiteLLM for provider-agnostic model calls.
+        Set LLM_MODEL env var to swap models (e.g. claude-3-haiku-20240307).
+
         Args:
             rubric: The evaluation rubric template
             user_input: The user's original query
@@ -96,13 +99,6 @@ class EvaluationService:
         Returns:
             DimensionScore with score and reasoning
         """
-        if not self._openai_client:
-            # Fallback for when OpenAI is not configured
-            return DimensionScore(
-                score=7,
-                reasoning="OpenAI API key not configured. Using default score.",
-            )
-
         # Format the rubric with the actual content
         formatted_prompt = rubric.format(
             user_input=user_input,
@@ -110,8 +106,8 @@ class EvaluationService:
             response=response,
         )
 
-        completion = await self._openai_client.chat.completions.create(
-            model="gpt-4o-mini",
+        completion = await litellm.acompletion(
+            model=self._model,
             messages=[
                 {
                     "role": "system",
@@ -121,7 +117,7 @@ class EvaluationService:
                 {"role": "user", "content": formatted_prompt},
             ],
             response_format={"type": "json_object"},
-            temperature=0.1,  # Low temperature for consistent scoring
+            temperature=0.1,
         )
 
         result_text = completion.choices[0].message.content or "{}"
@@ -392,12 +388,9 @@ class EvaluationService:
         return "\n\n".join(critiques) if critiques else "Minor issues across dimensions."
 
     async def _generate_improved_response(self, prompt: str) -> str:
-        """Generate an improved response using OpenAI."""
-        if not self._openai_client:
-            return "[OpenAI API key not configured - cannot generate improvement]"
-
-        completion = await self._openai_client.chat.completions.create(
-            model="gpt-4o-mini",
+        """Generate an improved response using LiteLLM."""
+        completion = await litellm.acompletion(
+            model=self._model,
             messages=[
                 {
                     "role": "system",

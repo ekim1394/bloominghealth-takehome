@@ -166,8 +166,14 @@ Evaluates two responses independently, calculates average scores, and determines
 5. Re-evaluate and log before/after metrics to MLflow
 
 ### Environment Variables
-```bash
-OPENAI_API_KEY=...      # Required for judge LLM calls
-MLFLOW_TRACKING_URI=... # Optional, defaults to local ./mlruns
-```
 
+```bash
+# LLM provider API keys (set whichever provider you use)
+OPENAI_API_KEY=...       # For OpenAI models (default: gpt-4o-mini)
+ANTHROPIC_API_KEY=...    # For Anthropic models
+
+# Model selection (uses LiteLLM routing)
+LLM_MODEL=gpt-4o-mini                    # OpenAI (default)
+LLM_MODEL=claude-3-haiku-20240307        # Anthropic
+LLM_MODEL=gemini/gemini-2.0-flash        # Google
+```
