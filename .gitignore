@@ -23,3 +23,6 @@ data/
 
 # OS
 .DS_Store
+
+.env
+mlruns

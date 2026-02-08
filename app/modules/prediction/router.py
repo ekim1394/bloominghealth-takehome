@@ -67,23 +67,41 @@ def _parse_training_data(file_path: str) -> tuple[list[dict[str, Any]], list[str
     with open(path) as f:
         data = json.load(f)
 
-    if not isinstance(data, list):
-        raise ValueError("Training data must be a JSON array")
+    # Handle both top-level list and wrapped dict {"calls": [...]}
+    records = data
+    if isinstance(data, dict) and "calls" in data:
+        records = data["calls"]
+
+    if not isinstance(records, list):
+        raise ValueError("Training data must be a JSON array or a dictionary with a 'calls' list")
 
     feature_rows: list[dict[str, Any]] = []
     outcomes: list[str] = []
 
-    for record in data:
+    for record in records:
         # Parse events
-        events = [
-            CallEvent(
-                timestamp=e["timestamp"],
-                type=e["type"],
-                data=e.get("data", {}),
-                duration_ms=e.get("duration_ms"),
+        events: list[CallEvent] = []
+        for e in record.get("events", []):
+            # Handle both 'timestamp' and 'ts' from different data sources
+            raw_ts = e.get("timestamp") or e.get("ts")
+            if raw_ts is None:
+                continue
+
+            # Convert numeric offsets (from generator) to datetimes
+            if isinstance(raw_ts, (int, float)):
+                import datetime
+                dt_ts = datetime.datetime.fromtimestamp(raw_ts, tz=datetime.timezone.utc)
+            else:
+                dt_ts = raw_ts
+
+            events.append(
+                CallEvent(
+                    timestamp=dt_ts,
+                    type=e["type"],
+                    data=e.get("data", {}),
+                    duration_ms=e.get("duration_ms"),
+                )
             )
-            for e in record.get("events", [])
-        ]
 
         # Parse metadata
         meta_dict = record.get("metadata", {})

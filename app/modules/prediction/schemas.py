@@ -14,6 +14,7 @@ class EventType(str, Enum):
     USER_SPEECH = "user_speech"
     SILENCE = "silence"
     TOOL_CALL = "tool_call"
+    CALL_START = "call_start"
     CALL_END = "call_end"
 
 
