@@ -25,6 +25,16 @@ export OPENAI_API_KEY=your-key-here
 uv run uvicorn app.main:app --reload
 ```
 
+### MLflow UI
+
+After running evaluations (Case Study 3), view experiment results in the MLflow dashboard:
+
+```bash
+uv run mlflow ui --backend-store-uri file:./mlruns --port 5000
+```
+
+Then open [http://localhost:5000](http://localhost:5000) and select the **llm-response-evaluation** experiment from the sidebar.
+
 ## API Endpoints
 
 | Endpoint | Method | Description |

@@ -162,7 +162,7 @@ class EvaluationService:
 
         # Log to MLflow
         avg_score = self._calculate_average_score(result)
-        with mlflow.start_run():
+        with mlflow.start_run(run_name=f"evaluate: {user_input[:50]}"):
             mlflow.log_params(
                 {
                     "user_input": user_input[:100],  # Truncate for logging
@@ -330,7 +330,7 @@ class EvaluationService:
 
         # Step 6: Log before/after to MLflow
         changes_made = self._identify_changes(original_eval, improved_eval)
-        with mlflow.start_run():
+        with mlflow.start_run(run_name=f"improve: {user_input[:50]}"):
             mlflow.log_params({"operation": "improvement"})
             mlflow.log_metrics(
                 {
